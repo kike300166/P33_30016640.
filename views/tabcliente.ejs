@@ -26,7 +26,7 @@
     </header>
     <div class="container">
       <div class="titulo">
-          <h1>Pagina Categorias <%= category.length %>
+          <h1>Pagina Clientes <%= usuarios.length %>
           </h1>
       </div>
 
@@ -39,31 +39,26 @@
               <th>
                   <p>Nombre</p>
               </th>
-              <td><a href="/insertcat" class="btn btn-dark">Insertar categoría</a></td>
           </tr>
           <tr>
-              <% if (category) { %>
-                  <% for (let i=0; i < category.length; i++){ %>
-                      <% if (category) { %>
+              <% if (usuarios) { %>
+                  <% for (let i=0; i < usuarios.length; i++){ %>
+                      <% if (usuarios) { %>
           <tr>
               <td>
                   <%= (i + 1)  %>
               </td>
               <td>
-                  <%= category[i].name %>
+                  <%= usuarios[i].name %>
               </td>
               <td>
-                  <div class="input-group">
-                    <td><a href="/editcat/<%=category[i].id%>" class="btn btn-dark">Editar</a>
-                      <a href="/deletecat/<%=category[i].id%>" class="btn btn-dark">Eliminar</a>
-                  </div>
               </td>
           </tr>
           <% } %>
               <% } %>
                   <% } else { %>
                       <tr>
-                          <th class="display-6">No hay categorias en el sistema</th>
+                          <th class="display-6">No hay clientes</th>
                       </tr>
                       <% } %>
                           </tr>

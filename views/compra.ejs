@@ -9,14 +9,12 @@
 <body>
   <header>
     <div class="menu logo-nav">
-      <a href="/view" class="logo">FLASHFOTOGRAFY</a>
+      <a href="/pageini" class="logo">FLASHFOTOGRAFY</a>
       <label class="menu-icon"><span class="fas fa-bars icomin"></span></label>
       <nav class="navigation">
         <ul>
           <li><a href="/login">Administrar</a></li>
-            <li><a href="/nosotros">Nosotros</a></li>
-            <li><a href="/destacados">Productos</a></li>
-            <li>Toma las mejores fotos en tiempo real</li>
+          <li><a href="/pageini">Volver</a></li>
         </ul>
       </nav>
     </div>
@@ -42,7 +40,7 @@
     <label for="client">Seleccione el cliente</label>
     <br>
     <select id="categoria" name="cliente_id" required>
-      <% client.forEach(client => { %>
+      <% cliente.forEach(client => { %>
         <option value="<%= client.id %>"><%= client.email %></option>
       <% }) %>
     </select>
@@ -63,28 +61,6 @@
 
   </div>
 
-    <footer class="footer-section">
-      <div class="copyright-area">
-          <div class="container-footer">
-              <div class="row-footer">
-                  <div class="col-xl-6 col-lg-6 text-center text-lg-left">
-                      <div class="copyright-text">
-                          <p>Copyright &copy; 2020, todos los derechos reservados <a href="/view">FLASHFOTOGRAFY</a></p>
-                      </div>
-                  </div>
-                  <div class="col-xl-6 col-lg-6 d-none d-lg-block text-right">
-                      <div class="footer-menu">
-                          <ul>
-                            <li><a href="/login">Administrar</a></li>
-                            <li><a href="/nosotros">Nosotros</a></li>
-                            <li><a href="/sesion"> Iniciar sesion</a></li>
-                            <li><a href="/client">Registrarse</a></li>
-                          </ul>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      </div>
     </footer>  
 
     <script src="https://kit.fontawesome.com/a076d05399.js"></script>
