@@ -1,22 +1,227 @@
+require ('dotenv').config();
 var express = require('express');
 var router = express.Router();
-const db = require('../db/models');
-require('dotenv').config()
 var axios = require ('axios');
+var nodemailer = require ('nodemailer');
+
+const productosModel = require ('../models/admin');
 const { Axios } = require('axios');
-const tablas = require ('../db/models')
+
+//Tranporte correo
+const transporter = nodemailer.createTransport({ 
+  service: 'gmail', 
+  auth: { 
+    user: process.env.correo, 
+    pass: process.env.clave_correo
+  } });
 
 
-//login
-let logged = false;
-let logeedin = false;
+//Pagina principal
+router.get('/', function(req, res, next){
+  res.render('index', {title: 'Pagina inicio'})
+})
 
+//Inicio de sesion clientes
+router.get('/loginclientes', function(req, res, next){
+  if (req.session.auth){
+    res.redirect('/clientes');
+  } else {
+  res.render('login_clientes', {title: 'Login Clientes'})}
+});
+
+//logeo de inicio de sesion cliente
+router.post('/login2', function(req, res, next){
+  const {email, password} =req.body;
+  let concat, concat2;
+  productosModel
+  .iniciosesionclientes(email)
+  .then(datos=>{
+    concat = datos[0].password;
+    concat2 = datos[0].id
+    console.log(concat2);
+    if (password == concat){
+      req.session.email = email;
+      req.session.auth = true;
+      req.session.username = concat2;
+      res.redirect('/clientes');
+    }else{
+      res.send('esto no funciona')
+    }
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error en el inicio de sesion')
+  })
+});
+
+//Pagina registros clientes
+router.get('/register-pag', function(req, res, next){
+  res.render('register_clientes', {title: 'Registro Clientes'})
+});
+
+//Registro de clientes
+router.post('/register', function(req, res, next){
+  const {email, password1, password2, preg_seg, resp_seg} = req.body;
+  if (password1 != password2){
+    res.redirect('/passwordfail')
+  } else{
+  productosModel
+    .registroclientes(email, password1, preg_seg, resp_seg)
+    .then(idClienteRegistrado=>{
+      const mailOptions = { 
+        from: 'Joseenriquegalindez03@gmail.com', 
+        to: email, 
+        subject: `HOLA, SOMOS FLASHFOTOGRAFY`, 
+        text: `¿COMO ESTAS?\n 
+        ¡Estamos a punto de comenzar!\n
+        Te registraste de manera exitosa.
+        Es hora de que busques/encuentres tu camara ideal, captura momentos.
+        FLASHFOTOGRAFY. All rights reserved` 
+      };
+
+        transporter.sendMail(mailOptions, function(error, info){ 
+          if (error) { console.log(error); 
+          } else { 
+            console.log('Correo electrónico de Bienvenida enviado: ' + info.response); 
+          }});
+      res.redirect('/loginclientes')
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error en el registro')
+    })}
+});
+
+//Pagina error en contraseñas
+router.get('/passwordfail', function(req, res, next){
+  res.render('clavefail', {title: 'Contraseñas incorrectas'})
+})
+
+//Pagina recuperar contraseña
+router.get('/recuperar', function(req, res, next){
+  res.render('recuperar', {title: 'Recuperar Contraseña'})
+});
+
+
+//Responder pregunta de Seguridad
+router.post('/resclave', function(req, res, next){
+  const {pregunta, respuesta} = req.body;
+  productosModel
+    .recuperarclave(pregunta, respuesta)
+    .then(datos=>{
+      const mailOptions = { 
+        from: `Joseenriquegalindez03@gmail.com`, 
+        to: datos[0].email, 
+        subject: `Retablecimiento de password`, 
+        text: `continuamos con tu solicitud.\n
+        haga click si desea continuar: ${process.env.base_url}/rest-clave/${datos[0].id}
+        si no fue usted quien lo solicito, ignore las indicaciones y continue.
+         FLASHFOTOGRAFY ©2024 . All rights reserved` 
+      };
+
+      transporter.sendMail(mailOptions, function(error, info){ 
+        if (error) { console.log(error); 
+        } else { 
+          console.log('Correo electrónico de recuperacion de contraseña enviado: ' + info.response); 
+      }});
+      res.send('Dirigase al correo para recuperar su contraseña')
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Pregunta y respuesta no coincidente')
+    })
+});
+
+//Pagina restablecer contraseña
+router.get('/rest-clave/:id', function(req, res, next){
+  if (req.session.auth){
+    res.redirect('/clientes');
+  }else{
+    const id= req.params.id;
+    productosModel
+    .obtenerIdcliente(id)
+    .then(datos=>{
+      res.render('claverec', {datos: datos})
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('No se encuentra ese cliente')
+    })
+  }
+});
+
+//Restablecer Contraseña
+router.post('/updateclave/:id', function(req, res, next){
+  const cliente_id= req.params.id;
+  console.log(cliente_id);
+  const {password1, password2} = req.body;
+  if (password1 != password2){
+    res.redirect('/passwordfail')
+  } else{
+    productosModel
+    .restablecerclave(cliente_id, password1)
+    .then(()=>{
+      res.send('Contraseña recuperada de manera exitosa');
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error restableciendo contraseña')
+    })
+  }
+});
+
+//Pagina principal compras
+router.get('/clientes', function(req, res, next){
+    productosModel
+    .obteneradmin()
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    }) 
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error cargando archivos')
+    })
+});
+
+//Pagina detalles productos
+router.get('/detalles/:id', function(req, res, next){
+  const id = req.params.id
+  productosModel
+    .obtenerPorId(id)
+    .then(datos=>{
+      res.render('detallesprd', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('No se encuentra el producto')
+    })
+});
+
+//Pagina formulario de compra 
+router.get('/pedidoprd/:id', function(req, res, next){
+  if(req.session.auth){
+    const id = req.params.id;
+    productosModel
+      .obtenerPorId(id)
+      .then(datos=>{
+        res.render('pedidoprd', {datos: datos});
+      })
+      .catch(err=>{
+        console.error(err.message);
+        return res.status(500).send('No se encuentra el producto')
+      })
+  } else{
+    res.redirect('/loginclientes');
+  }
+})
 
 //Pago productos API 
 router.post('/payments', async (req, res, next)=>{
   var monto, moneda;
-  const {descripcion, nombre, numero_tarjeta, cvv, mes_ven, year_ven, moneda_id, cantidad, referencia, precio} = req.body;
-  const ip_cliente = req.socket.remoteAddress;
+  const {producto_id, descripcion, nombre, numero_tarjeta, cvv, mes_ven, year_ven, moneda_id, cantidad, referencia, precio} = req.body;
+  const ip_cliente = req.ip || req.socket.remoteAddress;
+  const cliente_id = req.session.username;
+  const email = req.session.email;
   if (moneda_id == 1) {
     moneda= 'USD';
     monto = cantidad * precio;
@@ -55,538 +260,576 @@ router.post('/payments', async (req, res, next)=>{
       productosModel
       .facturas(cantidad, total_pagado, fecha, ip_cliente, transaccion_id, descripcion, referencia, moneda_id, cliente_id, producto_id)
       .then(idFacturaRealizada =>{
+        const mailOptions = { 
+          from: `joseenriquegalindez03@gmail.com`, 
+          to: email, 
+          subject: `¡Ya se realizo su compra!`, 
+          text: `¡Hola, ${nombre}!
+          ¡Su compra en flashfotografy nos llena de felicidad! detalles a continuación:\n\n
+          N° Transicción: ${transaccion_id}\n
+          Producto: ${descripcion}\n
+          Cantidad: ${cantidad}\n
+          Total Pagado: ${total_pagado}${moneda}\n\n
+          ¡Gracias por elegirnos!. 
+         Flashfotografy ©2024 M&C. All rights reserved` 
+        };
+
+          transporter.sendMail(mailOptions, function(error, info){ 
+            if (error) { console.log(error); 
+            } else { 
+              console.log('Correo electrónico de compra enviado: ' + info.response); 
+            }});
         res.render('pagosuccess', {title: 'Compra Exitosa'})
       })
-      
   } catch (err) {
     res.render('pagofails');
   }
+});
+
+//Pagina de Productos comprados por Cliente para su calificacion
+router.get('/productos-comprados', function(req, res, next){
+  if (req.session.auth) {
+    const cliente_id = req.session.username;
+    console.log(cliente_id);
+    productosModel
+    .obtenercomprasPorCliente(cliente_id)
+    .then(datos=>{
+      res.render('prdcomprados', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+  } else{
+    res.redirect('/loginclientes');
+  }
 })
 
-// compra
-router.get('/compra', (req, res) => {
-  db.getproducto()
-  .then(data =>{
-    db.getuser()
-    .then (client => { 
-      console.log(client);
-      res.render ('compra', { producto: data, cliente: client });
-    })
-    .catch (err => {
-      res.render ('compra', { producto: data, cliente: client  });
-    })
-  })     
-  .catch (err => {
-    res.render ('compra', { producto: [], cliente: [] });
-  });
-} )
-
-//Pagina formulario de compra 
-router.get('/pedidoprd/:id', function(req, res, next){
-  if(req.session.auth){
-    const id = req.params.id
+//Pagina para calificar un producto
+router.get('/calificar/:id', function(req, res, next){
+  if (req.session.auth){
+    const id = req.params.id;
     productosModel
-      .obtenerPorId(id)
-      .then(datos=>{
-        res.render('pedidoprd', {datos: datos});
+    .obtenerprdconimgPorId(id)
+    .then(producto=>{
+      res.render('calificaciones', {producto:producto})
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando productos')
+    })
+  }else{
+    res.redirect('/loginclientes');
+  }
+});
+
+//Califar producto
+router.post('/calificacion', function(req, res, next){
+  const {producto_id, puntos}= req.body;
+  const cliente_id = req.session.username;
+  productosModel
+  .calificarprd(puntos, cliente_id, producto_id)
+  .then(idProductoCalificado=>{
+    res.render('calificacionsuccess');
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error calificando productos')
+  })
+});
+
+//Filtrado por promedio de calificacion
+router.post('/filtroprm', function(req, res, next){
+  const {promedio} = req.body;
+  productosModel
+  .filtradoprm(promedio)
+  .then(datos=>{
+    res.render('clientes', {datos: datos});
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error buscando archivos')
+  })
+});
+
+//Busqueda nombre productos
+router.post('/search', function(req, res, next){
+  const {nombre} = req.body;
+  productosModel
+    .obtenerprdPorNombre(nombre)
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+});
+
+//Busqueda descripcion productos
+router.post('/searchdescrp', function(req, res, next){
+  const {descripcion} = req.body;
+  productosModel
+    .obtenerprdPorDescripcion(descripcion)
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+});
+
+//Filtrado de productos por categoria
+router.post('/filtroctg', function(req, res, next){
+  const {categoria} = req.body;  
+  console.log(req.body);
+  productosModel
+    .filtradoctg(categoria)
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+});
+
+//Filtrado de productos por marcas
+router.post('/filtromarca', function(req, res, next){
+  const {marca} = req.body;
+  console.log(req.body); 
+  productosModel
+    .filtradomarca(marca)
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+});
+
+//Filtrado de productos por jugadores
+router.post('/filtrojgd', function(req, res, next){
+  const {jugadores} = req.body;  
+  console.log(req.body);
+  productosModel
+    .filtradojgd(jugadores)
+    .then(datos=>{
+      res.render('clientes', {datos: datos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando archivos')
+    })
+});
+
+// Pagina inicio de sesion administrador
+router.get('/admin', function(req, res, next) {
+  if (req.session.admin){
+    res.redirect('/report');
+  } else{
+  res.render('login_admin', { title: 'Login Admin' });}
+});
+
+//login a la pagina del administrador
+router.post('/login', function(req, res, next){
+  const {user, password} = req.body;
+  if ((process.env.USER == user) && (process.env.PASSWORD == password)) {
+    req.session.admin = true;
+    res.redirect('/report');
+  } else{
+    res.render('loginfail', {title: 'Login Fail'});
+  }
+});
+
+//Get principal page
+router.get('/report', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obteneradmin()
+    .then(datos=>{
+      res.render('reporte', {datos: datos});
+    }) 
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error cargando archivos')
+    })
+  } else{
+    res.redirect('/admin');
+  }
+  
+})
+
+//Get productos page
+router.get('/productos', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obtenerprd()
+    .then(productos =>{
+      res.render('productos', {productos: productos});
+    })
+    .catch(err =>{
+      return res.status(500).send("Error buscando producto");
+    })
+  } else {
+    res.redirect('/admin');
+  }
+});
+
+//Get categorias page
+router.get('/categorias', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+  .obtenerctg()
+  .then(categorias =>{
+    res.render('categorias', {categorias: categorias});
+  })
+  .catch(err =>{
+    return res.status(500).send("Error buscando categorias");
+  })
+  } else{
+    res.redirect('/admin');
+  }
+});
+
+//Get imagenes page
+router.get('/imagenes', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obtenerimg()
+    .then(imagenes =>{
+      res.render('imagenes', {imagenes: imagenes});
+    })
+    .catch(err =>{
+      return res.status(500).send("Error buscando imagenes");
+    })
+  } else{
+    res.redirect('/admin');
+  }
+});
+
+//Get productos page agg
+router.get('/prdagg', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obtenerctg()
+    .then(categorias=>{
+      res.render('aggprd', {categorias: categorias});
+    })
+    .catch(err =>{
+      return res.status(500).send("Error a cargar la pagina");
+    }) 
+  } else{
+    res.redirect('/admin');
+  }
+})
+
+//Get categorias page agg
+router.get('/ctgagg', function(req, res, next){
+  if (req.session.admin){
+    res.render('aggctg');
+  } else{
+    res.redirect('/admin');
+  }
+});
+
+//Get imagenes page agg
+router.get('/imgagg', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+  .obtenerprd()
+  .then(productos=>{
+    res.render('aggimg', {productos: productos});
+  })
+  .catch(err =>{
+    return res.status(500).send("Error a cargar la pagina");
+  })
+  } else{
+    res.redirect('/admin');
+  }
+});
+
+//agregar categoria
+router.post('/aggctg', function(req, res, next){
+  const {nombre} = req.body;
+  console.log(nombre);
+  productosModel
+  .insertarctg(nombre)
+  .then(idCategoriaInsertado =>{
+    res.redirect('/categorias');
+  })
+  .catch(err =>{
+    console.error(err.message);
+    return res.status(500).send("Error insertando producto");
+  });
+})
+
+//agregar producto
+router.post('/aggprd', function(req, res, next){
+  const {nombre, precio, codigo, descripcion, marca, jugadores, categoria_id} = req.body;
+  productosModel
+  .insertarprd(nombre, precio, codigo, descripcion, marca, jugadores, categoria_id)
+  .then(idProductoInsertado =>{
+    res.redirect('/productos');
+  })
+  .catch(err =>{
+    console.error(err.message);
+    return res.status(500).send("Error insertando producto");
+  })
+});
+
+//agregar imagenes
+router.post('/aggimg', function(req, res, next){
+  const {url, destacado, producto_id} = req.body;
+  productosModel
+  .insertarimg(url, destacado, producto_id)
+  .then(idImagenInsertada=>{
+    res.redirect('/imagenes');
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error insertando imagen');
+  })
+});
+
+//Get productos page edit
+router.get('/prdedit/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+    productosModel
+      .obtenerprdPorId(id)
+      .then(productos=>{
+        res.render('editprd', {productos: productos});
       })
       .catch(err=>{
         console.error(err.message);
-        return res.status(500).send('No se encuentra el producto')
-      })
+        return res.status(500).send('Error buscando el producto')
+    })
   } else{
-    res.redirect('/userini');
+    res.redirect('/admin');
   }
-})
+});
 
-
-
-
-router.post('/compra', function(req, res, next) {
-  let date = new Date();
-  let Datetime = `${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`;
-  let fecha = Datetime;
-  let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const ip_cliente = ip.split(",")[0];
-  const cliente_id = req.body.cliente_id
-  const producto_id = req.body.producto_id
-  const cantidad = req.body.cantidad
-  const bd = require('../db/connection');
-  let sql = `SELECT price FROM producto WHERE id = ?`;
-  let precio;
- 
-  bd.get(sql, [producto_id], (err, row) => {
-    if (err) {
+//Get categorias page edit
+router.get('/ctgedit/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+    productosModel
+    .obtenerctgPorId(id)
+    .then(categorias=>{
+      res.render('editctg', {categorias: categorias});
+    })
+    .catch(err=>{
       console.error(err.message);
-    }
-    precio = row.price;
-    console.log(`El precio del producto ${producto_id} es: ${precio}`);
-   
-    let total_pagado = precio * cantidad;
-    console.log(`El resultado de la multiplicación es: ${total_pagado}`);
-
-    db.insertcompra(cliente_id, producto_id, cantidad, total_pagado, fecha, ip_cliente)
-    .then(() => {
-       res.redirect('payments')
+      return res.status(500).send('Error buscando la categoria')
     })
-    .catch(err => {
-      console.log(err);
-    })
-
-  });
- 
-})
-
-
-router.get('/tabcliente', (req, res) => {
-  db.getuser()
-    .then(data => {        
-      console.log(data)
-      res.render('tabcliente', { usuarios: data });
-  })
-  .catch(err => {
-      res.render('tabcliente', { usuarios: [] });
-  })
-
-});
-
-router.get('/payments', (req, res) => {
-  res.render('payments')
-  });
-
-  router.get('/paga', (req, res) => {
-    res.render('paga')
-    });
-
-
-
-
-  router.get('/filterslog', (req, res) => {
-    const { producto_name, description, category_name, brand, model } = req.query;
-    db.consultable(producto_name, description, category_name, brand, model)
-      .then(data => {
-        res.render('pageini', { producto: data });
-      })
-      .catch(err => {
-        console.error(err);
-        res.render('pageini', { producto: [] });
-      });
-  });
-  
-
-
-
-    router.get('/filters', (req, res) => {
-      res.render('filters')
-      });
-      
-      router.get('/imagen/:id', (req, res)=>{
-        const id = req.params.id
-        db.getimagenID(id)
-        .then(data =>{
-          console.log(data)
-          res.render('imagen', {imagen: data[0]})
-        })
-          .catch(err =>{
-            console.log(err);
-            res.render('imagen', {imagen: []})
-          })   
-      })
-
-
-
-      router.get('/detallesini/:id', (req, res)=>{
-        const id = req.params.id
-        db.getproductoID(id)
-        .then(data =>{
-          console.log(data)
-          db.getimagen()
-          .then (images => { 
-            res.render ('detallesini', { producto: data[0], imagen: images });
-          })
-          .catch (err => {
-            res.render ('detallesini', { producto: data[0], imagen: [] });
-          })
-        })     
-        .catch (err => {
-          res.render ('detallesini', { producto: [], imagen: [] });
-        });
-      })
-
-
-
-
-      router.get('/detalles/:id', (req, res)=>{
-        const id = req.params.id
-        db.getproductoID(id)
-        .then(data =>{
-          console.log(data)
-          db.getimagen()
-          .then (images => { 
-            res.render ('detalles', { producto: data[0], imagen: images });
-          })
-          .catch (err => {
-            res.render ('detalles', { producto: data[0], imagen: [] });
-          })
-        })     
-        .catch (err => {
-          res.render ('detalles', { producto: [], imagen: [] });
-        });
-      })
-
-
-
-router.get('/', (req, res) => {
-  const { producto_name, description, category_name, brand, model } = req.query;
-  db.consultable(producto_name, description, category_name, brand, model)
-    .then(data => {
-      res.render('userpage', { producto: data });
-    })
-    .catch(err => {
-      console.error(err);
-      res.render('userpage', { producto: [] });
-    });
-});
-
-
-router.get('/pageini', (req, res) => {
-  const { producto_name, description, category_name, brand, model } = req.query;
-  db.consultable(producto_name, description, category_name, brand, model)
-    .then(data => {
-      res.render('pageini', { producto: data });
-    })
-    .catch(err => {
-      console.error(err);
-      res.render('pageini', { producto: [] });
-    });
-});
-
-router.get('/register', (req,res)=> {
-  res.render('register')
-})
-
-router.post('/register', (req, res) => {
-  const {name,email, password} = req.body;
-  console.log(name, email, password);
-  db.register(name, email, password)
-  .then(() => {
-     res.redirect('pageini')
-  })
-  .catch(err => {
-    console.log(err);
-  })
-});  
-
-router.get('/userini', (req,res)=> {
-  res.render('userini')
-})
-
-router.post('/pageini', (req, res) => {
-  const email = req.body.email; 
-  const password = req.body.password;
-  console.log(email, password);
-  const bd = require('../db/connection');
-  bd.get('SELECT * FROM usuarios WHERE email = ? AND password = ?', [email, password], (err, row) => {
-    if (err) {
-      console.error(err);
-      // Manejar el error
-    } else {
-      if (row) {
-        console.log(" Los datos son iguales, redirigir a otra vista")
-        res.redirect('/pageini');
-      } else {
-        console.log(" Los datos no son iguales, manejar según sea necesario")
-        res.redirect('/userini');
-      }
-    }
-  });
-});
-
-
-
-router.get('/login', (req,res) => {
-  res.render('login')
-})
-
-router.post('/login', (req,res) =>{
-  console.log(req.body)
-  if (req.body.user === process.env.USER && req.body.pass === process.env.PASS) {
-    console.log("Iniciaste")
-    logged = true
-    res.redirect('/administrar')
-  
-  } else {
-    logged = false
-    res.redirect('/login')
+  } else{
+    res.redirect('/admin')
   }
-})
-
-router.get('/administrar', (req, res) =>{
-  res.render('administrar')
-})
-
-//index
-router.get('/index', (req, res) => {
-  tablas
-  db.getproducto()
-    .then(data => {        
-      console.log(data)
-      tablas
-      res.render('index', { producto: data });
-  })
-  .catch(err => {
-      res.render('index', { producto: [] });
-  })
 });
 
-
-router.get('/tabcategory', (req, res) => {
-  tablas
-  db.getcategory()
-    .then(data => {        
-      console.log(data)
-      res.render('tabcategory', { category: data });
-  })
-  .catch(err => {
-      res.render('tabcategory', { category: [] });
-  })
-
+//Get imagenes page edit
+router.get('/imgedit/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+    productosModel
+    .obtenerimgPorId(id)
+    .then(imagenes=>{
+      res.render('editimg', {imagenes: imagenes});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando la imagen')
+    })
+  } else{
+    res.redirect('/admin');
+  }
 });
 
-router.get('/tabimagen', (req, res) => {
-  tablas
-  db.getimagen()
-    .then(data => {        
-      console.log(data)
-      res.render('tabimagen', { imagen: data });
-  })
-  .catch(err => {
-      res.render('tabimagen', { imagen: [] });
-  })
-
-});
-
-
-router.get('/insertcat', (req, res) => {
-  tablas
-  res.render('insertcat')
-} )
-
-
-//insertar producto
-router.get('/insert', (req, res) => {
-  tablas
-  db.getcategory()
-  .then(data => {
-    res.render('insert', {category: data});
-  })
-  .catch(err => {
-    res.render('insert', {category: []});
-  })
-} )
-
-
-router.post('/insert', (req, res) => {
-  const {code, name, brand, model, description, price, category_id} = req.body;
-  console.log(code, name, brand, model, description, price, category_id);
-  tablas
-  db.insertproducto(code, name,brand,model,description,price,category_id)
-  .then(() => {
-     res.redirect('index')
-  })
-  .catch(err => {
-    console.log(err);
-  })
-});
-
-router.post('/insertcat', (req, res) => {
-  const {name} = req.body;
-  console.log(name);
-  tablas
-  db.insertcategory(name)
-  .then(() => {
-     res.redirect('tabcategory')
-  })
-  .catch(err => {
-    console.log(err);
-  })
-});
-
-router.post('/insertima', (req, res) => {
-  const {url, producto_id, destacado} = req.body;
-  console.log(url, producto_id, destacado);
-  tablas
-  db.insertimagen(url, producto_id, destacado)
-  .then(() => {
-     res.redirect('tabimagen')
-  })
-  .catch(err => {
-    console.log(err);
-  })
-});
-
-
-//editar producto
-router.post('/edit/', (req, res)=>{
-  const {id, code, name, brand, model, description, price, category_id,} = req.body;
-  tablas
-  db.updateproducto(id, code, name, brand, model, description, price, category_id)
-  .then(() =>{
-    res.redirect('/index');
-    console.log(id, code, name, brand, model, description, price, category_id);
+//Update productos page
+router.post('/updateprd/:id', function(req, res, nexte){
+  const id= req.params.id;
+  const {nombre, precio, codigo, descripcion, marca, jugadores} = req.body;
+  productosModel
+  .actualizarprd(nombre, precio, codigo, descripcion, marca, jugadores, id)
+  .then(()=>{
+    res.redirect('/productos');
   })
   .catch(err =>{
-    console.log(err);
-
+    console.error(err.message);
+    res.status(500).send('Error actualizando el producto');
   })
 });
 
-router.post('/editcat/', (req, res)=>{
-  const {id, name} = req.body;
-  tablas
-  db.updatecategory(id, name)
-  .then(() =>{
-    res.redirect('/tabcategory');
+//Update categorias page
+router.post ('/updatectg/:id', function(req, res, next){
+  const id = req.params.id;
+  const {nombre} = req.body;
+  productosModel
+  .actualizarctg(nombre, id)
+  .then(()=>{
+    res.redirect('/categorias');
   })
   .catch(err =>{
-    console.log(err);
-
+    console.error(err.message);
+    res.status(500).send('Error actualizando la categoria');
   })
 });
 
-
-
-
-
-router.post('/editima/', (req, res)=>{
-  const {id, url, producto_id, destacado} = req.body;
-  tablas
-  db.updateimagen(id, url, producto_id, destacado)
-  .then(() =>{
-    res.redirect('/tabimagen');
-    console.log(id, url, producto_id, destacado);
+//Update imagenes page
+router.post('/updateimg/:id', function(req, res, next){
+  const id = req.params.id;
+  const {url, destacado} = req.body;
+  productosModel
+  .actualzarimg(url, destacado, id)
+  .then(()=>{
+    res.redirect('/imagenes');
   })
   .catch(err =>{
-    console.log(err);
-
+    console.error(err.message);
+    res.status(500).send('Error actualizando la imagen');
   })
 });
 
-
-
-router.get('/edit/:id', (req, res)=>{
-  const id = req.params.id
-  tablas
-  db.getproductoID(id)
-  .then(data =>{
-    console.log(data)
-    res.render('edit', {producto: data[0]})
-  })
-    .catch(err =>{
-      console.log(err);
-      res.render('edit', {producto: []})
+//Get productos page delete
+router.get('/prddelete/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+    productosModel
+    .obtenerprdPorId(id)
+    .then(productos=>{
+      res.render('deleteprd', {productos: productos});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando el producto')
     }) 
+  } else{
+    res.redirect('/admin');
+  }
+});
 
+//Get categorias page delete
+router.get('/ctgdelete/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+    productosModel
+    .obtenerctgPorId(id)
+    .then(categorias=>{
+      res.render('deletectg', {categorias: categorias});
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error buscando la categoria')
+    })
+  } else{
+    res.redirect('/admin');
+  }
+});
 
-    
-})
-
-router.get('/editima/:id', (req, res)=>{
-  tablas
-  const id = req.params.id
-  db.getimagenID(id)
-  .then(data =>{
-    db.getimagen
-    console.log(data)
-    res.render('editima', {imagen: data[0]})
+//Get imagenes page delete
+router.get('/imgdelete/:id', function(req,res,next){
+  if (req.session.admin){
+    const id=req.params.id;
+  productosModel
+  .obtenerimgPorId(id)
+  .then(imagenes=>{
+    res.render('deleteimg', {imagenes: imagenes});
   })
-    .catch(err =>{
-      console.log(err);
-      res.render('editima', {imagen: []})
-    }) 
-
-
-    
-})
-
-router.get('/editcat/:id', (req, res)=>{
-  const id = req.params.id
-  tablas
-  db.getcategoryID(id)
-  .then(data =>{
-    console.log(data)
-    res.render('editcat', {category: data[0]})
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error buscando la imagen')
   })
-    .catch(err =>{
-      console.log(err);
-      res.render('editcat', {category: []})
-    }) 
+  }else{
+    res.redirect('/admin')
+  }
+});
 
-
-    
-})
-
-router.get('/delete/:id', (req, res)=>{
+//Delete productos page
+router.get('/deleteprd/:id', function(req,res,next){
   const id = req.params.id;
-  tablas
-  db.deleteproducto(id)
-    .then(() => {
-    res.redirect('/index');
+  productosModel
+  .eliminarprd(id)
+  .then(()=>{
+    res.redirect('/productos');
   })
-  .catch(err => {
-  console.log(err);
-  });
-})
-
-
-
-router.get('/tabcategory', (req, res) =>{
-  tablas
-  res.render('tabcategory')
-})
-
-router.get('/deletecat/:id', (req, res)=>{
-  tablas
-  const id = req.params.id;
-  db.deletecategory(id)
-    .then(() => {
-    res.redirect('/tabcategory');
-  })
-  .catch(err => {
-  console.log(err);
-  });
-})
-
-router.get('/tabcategory', (req, res) =>{
-  tablas
-  res.render('tabcategory')
-})
-
-router.get('/deleteima/:id', (req, res)=>{
-  const id = req.params.id;
-  tablas
-  db.deleteimagen(id)
-    .then(() => {
-    res.redirect('/tabimagen');
-  })
-  .catch(err => {
-  console.log(err);
-  });
-})
-
-router.get('/insertima', (req, res) => {
-  tablas
-  db.getproducto()
-  .then(data => {
-    res.render('insertima', {producto: data});
-  })
-  .catch(err => {
-    res.render('insertima', {producto: []});
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error elimando el producto')
   })
 });
 
+//Delete categorias page
+router.get('/deletectg/:id', function(req,res,next){
+  const id = req.params.id;
+  productosModel
+  .eliminarctg(id)
+  .then(()=>{
+    res.redirect('/categorias');
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error elimando la categoria')
+  })
+});
 
+//Delete imagenes page
+router.get('/deleteimg/:id', function(req,res,next){
+  const id = req.params.id;
+  productosModel
+  .eliminarimg(id)
+  .then(()=>{
+    res.redirect('/imagenes');
+  })
+  .catch(err=>{
+    console.error(err.message);
+    return res.status(500).send('Error elimando la imagen')
+  })
+});
 
+//Vista tabla de compras
+router.get('/tablacompras', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obtenerfacturas()
+    .then(facturas=>{
+      res.render('tablacompras', {facturas: facturas})
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error cargando las facturas')
+    })
+  } else{
+    res.redirect('/admin')
+  }
+});
 
+//Vista tabla de clientes
+router.get('/tablaclientes', function(req, res, next){
+  if (req.session.admin){
+    productosModel
+    .obtenerclientes()
+    .then(clientes=>{
+      res.render('tablaclientes', {clientes: clientes})
+    })
+    .catch(err=>{
+      console.error(err.message);
+      return res.status(500).send('Error cargando los clientes')
+    })
+  } else{
+    res.redirect('/admin')
+  }
+});
 
+//Cerrar sesion
+router.get('/logout', function (req, res, next){
+  req.session.destroy();
+  res.redirect('/');
+})
+
+router.get('/*', function(req, res, next) {
+  res.render('error', { title: 'Error 404'});
+});
 module.exports = router;
